@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minimal Event Composer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="home-shell">
+    <div class="app-status" id="appStatus" hidden></div>
+    <section class="workspace-frame" aria-label="Vista principal">
+      <div class="event-stack" id="eventStack" aria-label="Eventos creados"></div>
+
+      <aside class="calendar-dock" aria-label="Calendario principal">
+        <div class="calendar-dock-header">
+          <button id="homePrevMonth" type="button" aria-label="Mes anterior">&lt;-</button>
+          <h2 id="homeCalendarTitle"></h2>
+          <button id="homeNextMonth" type="button" aria-label="Mes siguiente">-&gt;</button>
+        </div>
+        <div class="calendar-weekdays compact">
+          <span>D</span><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span>
+        </div>
+        <div class="calendar-days compact" id="homeCalendarDays"></div>
+      </aside>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" id="modalBackdrop"></div>
+  <section class="editor-modal" id="editorModal" aria-hidden="true" aria-label="Editor de evento">
+    <div class="editor-surface">
+      <header class="editor-topbar">
+        <div class="editor-status">
+          <p>Editor</p>
+          <strong id="editorStatusLabel">Nuevo evento</strong>
+        </div>
+        <div class="editor-actions">
+          <button class="ghost-button" id="closeModal" type="button">Cancelar</button>
+          <button class="primary-button" id="saveEvent" type="button">Guardar</button>
+        </div>
+      </header>
+
+      <section class="modal-preview-area">
+        <p class="editor-error" id="editorError" hidden></p>
+        <input
+          id="eventTitle"
+          class="title-capture"
+          type="text"
+          maxlength="42"
+          autocomplete="off"
+          placeholder="Titulo"
+        >
+        <div class="preview-stage">
+          <div id="modalPreview"></div>
+        </div>
+      </section>
+
+      <section class="editor-panel" id="editorPanel">
+        <div class="editor-pane" id="themePane"></div>
+        <div class="editor-pane" id="colorPane"></div>
+      </section>
+
+      <nav class="editor-toolbar" aria-label="Modos de edicion">
+        <button class="toolbar-button" id="tabTheme" type="button" data-tab="theme">Tema</button>
+        <button class="toolbar-button" id="tabColors" type="button" data-tab="colors">Colores</button>
+      </nav>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

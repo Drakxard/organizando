@@ -1,0 +1,12 @@
+{
+  "name": "organizando",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "check": "node --check app.js && node --check api/events/index.js && node --check api/events/[id].js && node --check lib/db.js && node --check lib/events-store.js && node --check scripts/init-db.js",
+    "db:init": "node scripts/init-db.js"
+  },
+  "dependencies": {
+    "postgres": "^3.4.7"
+  }
+}
