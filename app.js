@@ -285,8 +285,35 @@ function sortEvents(events) {
   return [...events];
 }
 
-function orderEventsByCreatedAt(events) {
-  return [...events].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+function orderEventsBySortOrder(events) {
+  return [...events].sort((left, right) => {
+    const leftOrder = Number.isInteger(left.sortOrder) ? left.sortOrder : Number.MAX_SAFE_INTEGER;
+    const rightOrder = Number.isInteger(right.sortOrder) ? right.sortOrder : Number.MAX_SAFE_INTEGER;
+
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+  });
+}
+
+function applySequentialSortOrder(events) {
+  return events.map((event, index) => ({
+    ...event,
+    sortOrder: index
+  }));
+}
+
+async function persistEventOrder(events) {
+  await Promise.all(
+    events.map((event, index) =>
+      requestJson(`/api/events/${encodeURIComponent(event.id)}`, {
+        method: "PUT",
+        body: JSON.stringify({ sortOrder: index })
+      })
+    )
+  );
 }
 
 function moveEvent(events, draggedId, targetId) {
@@ -361,7 +388,7 @@ async function loadEvents() {
   renderApp();
 
   try {
-    const events = orderEventsByCreatedAt((await requestJson("/api/events")).map(normalizeEvent));
+    const events = orderEventsBySortOrder((await requestJson("/api/events")).map(normalizeEvent));
     state.events = events;
     state.selectedEventId = events[0]?.id || null;
   } catch (error) {
@@ -545,9 +572,24 @@ function renderEventStack() {
     button.addEventListener("drop", (dragEvent) => {
       if (!state.draggedEventId || state.draggedEventId === event.id) return;
       dragEvent.preventDefault();
-      state.events = moveEvent(state.events, state.draggedEventId, event.id);
+      const previousEvents = state.events;
+      const reorderedEvents = applySequentialSortOrder(moveEvent(state.events, state.draggedEventId, event.id));
+
+      state.events = reorderedEvents;
       state.draggedEventId = null;
+      state.saveNotice = "";
       renderApp();
+
+      void (async () => {
+        try {
+          await persistEventOrder(reorderedEvents);
+        } catch (error) {
+          state.events = previousEvents;
+          state.saveNotice = `No se pudo guardar el orden: ${error.message}`;
+          refreshAppStatus();
+          renderApp();
+        }
+      })();
     });
     eventStack.appendChild(button);
   });
@@ -832,7 +874,8 @@ async function saveDraft() {
     ...(previousEvent || {}),
     ...payload,
     id: optimisticId,
-    createdAt: previousEvent?.createdAt || state.draft.createdAt || getNowISO()
+    createdAt: previousEvent?.createdAt || state.draft.createdAt || getNowISO(),
+    sortOrder: previousEvent?.sortOrder ?? 0
   });
 
   state.isSaving = true;
@@ -845,7 +888,7 @@ async function saveDraft() {
     );
     state.selectedEventId = editingEventId;
   } else {
-    state.events = sortEvents([optimisticEvent, ...state.events]);
+    state.events = applySequentialSortOrder([optimisticEvent, ...state.events]);
     state.selectedEventId = optimisticId;
   }
 
@@ -887,7 +930,7 @@ async function saveDraft() {
           await requestJson(`/api/events/${encodeURIComponent(persistedEvent.id)}`, { method: "DELETE" });
           persistedEvent = null;
         } else {
-          state.events = sortEvents(
+          state.events = orderEventsBySortOrder(
             state.events.map((event) => (event.id === optimisticId ? persistedEvent : event))
           );
           if (state.selectedEventId === optimisticId) {
