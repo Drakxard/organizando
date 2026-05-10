@@ -1,4 +1,7 @@
 const themeOrder = ["tealSlider", "tealBars", "pixelBlack"];
+const allowedThemes = new Set(themeOrder);
+const hexColorPattern = /^#(?:[0-9a-fA-F]{6})$/;
+const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 const themes = {
   tealSlider: {
@@ -69,7 +72,13 @@ const state = {
   saveNotice: "",
   deletingEventId: null,
   draggedEventId: null,
-  discardedTempEventIds: new Set()
+  needsFolderAccess: true,
+  isFolderModalOpen: true,
+  isPickingFolder: false,
+  folderStatus: "Verificando carpeta...",
+  folderError: "",
+  hasStoredHandle: false,
+  browserUnsupported: false
 };
 
 const monthFormatter = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" });
@@ -80,6 +89,14 @@ const homeCalendarTitle = document.getElementById("homeCalendarTitle");
 const homeCalendarDays = document.getElementById("homeCalendarDays");
 const homePrevMonthButton = document.getElementById("homePrevMonth");
 const homeNextMonthButton = document.getElementById("homeNextMonth");
+
+const folderBackdrop = document.getElementById("folderBackdrop");
+const folderModal = document.getElementById("folderModal");
+const folderModalTitle = document.getElementById("folderModalTitle");
+const folderModalMessage = document.getElementById("folderModalMessage");
+const folderModalError = document.getElementById("folderModalError");
+const selectFolderButton = document.getElementById("selectFolderButton");
+const retryFolderAccessButton = document.getElementById("retryFolderAccess");
 
 const modalBackdrop = document.getElementById("modalBackdrop");
 const editorModal = document.getElementById("editorModal");
@@ -235,7 +252,7 @@ function createDefaultEventData() {
 
 function normalizeHexColor(value, fallback) {
   const color = String(value || "").trim();
-  return /^#(?:[0-9a-fA-F]{6})$/.test(color) ? color.toLowerCase() : fallback;
+  return hexColorPattern.test(color) ? color.toLowerCase() : fallback;
 }
 
 function getLegacyColors(paletteKey) {
@@ -247,12 +264,19 @@ function getLegacyColors(paletteKey) {
   };
 }
 
+function normalizeTitle(value) {
+  const title = String(value || "").trim();
+  return title || DEFAULT_EVENT.title;
+}
+
 function normalizeEvent(event) {
   const legacyColors = getLegacyColors(event.palette);
   const sourceColors = event.colors && typeof event.colors === "object" ? event.colors : {};
 
   return {
     ...event,
+    title: normalizeTitle(event.title),
+    palette: typeof event.palette === "string" ? event.palette : "palette-01",
     colors: {
       background: normalizeHexColor(sourceColors.background, legacyColors.background),
       progress: normalizeHexColor(sourceColors.progress, legacyColors.progress),
@@ -261,24 +285,54 @@ function normalizeEvent(event) {
   };
 }
 
-function ensurePersistedEventShape(event) {
+function ensurePersistedEventShape(event, index = null) {
+  const prefix = index === null
+    ? "El archivo events.json contiene un evento invalido."
+    : `El archivo events.json contiene un evento invalido en la posicion ${index + 1}.`;
+
   if (!event || typeof event !== "object") {
-    throw new Error("La API devolvio un evento invalido.");
+    throw createAppError(prefix);
   }
 
-  if (!event.theme || !event.colors || typeof event.colors !== "object") {
-    throw new Error("La API devolvio un evento incompleto. Revisa la migracion de colores.");
+  if (typeof event.id !== "string" || !event.id.trim()) {
+    throw createAppError(`${prefix} Falta el id.`);
+  }
+
+  if (!allowedThemes.has(String(event.theme || ""))) {
+    throw createAppError(`${prefix} El tema no es valido.`);
+  }
+
+  if (!isoDatePattern.test(String(event.date || ""))) {
+    throw createAppError(`${prefix} La fecha debe tener formato YYYY-MM-DD.`);
+  }
+
+  if (!event.colors || typeof event.colors !== "object") {
+    throw createAppError(`${prefix} Faltan los colores.`);
   }
 
   const hasAllColors = ["background", "progress", "text"].every((key) => {
-    return /^#(?:[0-9a-fA-F]{6})$/.test(String(event.colors[key] || ""));
+    return hexColorPattern.test(String(event.colors[key] || ""));
   });
 
   if (!hasAllColors) {
-    throw new Error("La API devolvio colores incompletos. Revisa la migracion de colores.");
+    throw createAppError(`${prefix} Los colores deben tener formato hexadecimal completo.`);
   }
 
-  return event;
+  const createdAt = new Date(event.createdAt || "");
+  if (Number.isNaN(createdAt.getTime())) {
+    throw createAppError(`${prefix} El campo createdAt no es valido.`);
+  }
+
+  const sortOrder = Number(event.sortOrder);
+  if (!Number.isInteger(sortOrder) || sortOrder < 0) {
+    throw createAppError(`${prefix} El sortOrder no es valido.`);
+  }
+
+  return normalizeEvent({
+    ...event,
+    createdAt: createdAt.toISOString(),
+    sortOrder
+  });
 }
 
 function sortEvents(events) {
@@ -305,17 +359,6 @@ function applySequentialSortOrder(events) {
   }));
 }
 
-async function persistEventOrder(events) {
-  await Promise.all(
-    events.map((event, index) =>
-      requestJson(`/api/events/${encodeURIComponent(event.id)}`, {
-        method: "PUT",
-        body: JSON.stringify({ sortOrder: index })
-      })
-    )
-  );
-}
-
 function moveEvent(events, draggedId, targetId) {
   const nextEvents = [...events];
   const fromIndex = nextEvents.findIndex((event) => event.id === draggedId);
@@ -340,7 +383,396 @@ function setEditorError(message = "") {
   editorError.textContent = message;
 }
 
+function createAppError(message, options = {}) {
+  const error = new Error(message);
+  error.requiresFolderAccess = Boolean(options.requiresFolderAccess);
+  error.permissionDenied = Boolean(options.permissionDenied);
+  error.unsupported = Boolean(options.unsupported);
+  return error;
+}
+
+function isFileSystemAccessSupported() {
+  return (
+    typeof window.showDirectoryPicker === "function" &&
+    typeof window.indexedDB !== "undefined"
+  );
+}
+
+function isPermissionError(error) {
+  return Boolean(error?.requiresFolderAccess || error?.permissionDenied);
+}
+
+function isAbortError(error) {
+  return error?.name === "AbortError";
+}
+
+const localEventsStore = (() => {
+  const DB_NAME = "organizando-folder-access";
+  const STORE_NAME = "handles";
+  const DIRECTORY_KEY = "events-directory";
+  const EVENTS_FILENAME = "events.json";
+  let directoryHandle = null;
+
+  function openHandlesDb() {
+    return new Promise((resolve, reject) => {
+      const request = window.indexedDB.open(DB_NAME, 1);
+
+      request.onerror = () => reject(request.error || createAppError("No se pudo abrir IndexedDB."));
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME);
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+    });
+  }
+
+  async function readHandleFromDb() {
+    const db = await openHandlesDb();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(DIRECTORY_KEY);
+
+      request.onerror = () => reject(request.error || createAppError("No se pudo leer la carpeta guardada."));
+      request.onsuccess = () => resolve(request.result || null);
+      transaction.oncomplete = () => db.close();
+      transaction.onerror = () => {
+        reject(transaction.error || createAppError("No se pudo completar la lectura de la carpeta guardada."));
+        db.close();
+      };
+    });
+  }
+
+  async function writeHandleToDb(handle) {
+    const db = await openHandlesDb();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.put(handle, DIRECTORY_KEY);
+
+      request.onerror = () => reject(request.error || createAppError("No se pudo guardar la carpeta elegida."));
+      transaction.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        reject(transaction.error || createAppError("No se pudo guardar la carpeta elegida."));
+        db.close();
+      };
+    });
+  }
+
+  async function clearHandleFromDb() {
+    const db = await openHandlesDb();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.delete(DIRECTORY_KEY);
+
+      request.onerror = () => reject(request.error || createAppError("No se pudo limpiar la carpeta guardada."));
+      transaction.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        reject(transaction.error || createAppError("No se pudo limpiar la carpeta guardada."));
+        db.close();
+      };
+    });
+  }
+
+  async function getStoredDirectoryHandle() {
+    if (!isFileSystemAccessSupported()) {
+      return null;
+    }
+
+    try {
+      return await readHandleFromDb();
+    } catch {
+      return null;
+    }
+  }
+
+  async function queryReadWritePermission(handle) {
+    if (!handle || typeof handle.queryPermission !== "function") {
+      return "denied";
+    }
+
+    try {
+      return await handle.queryPermission({ mode: "readwrite" });
+    } catch {
+      return "denied";
+    }
+  }
+
+  async function ensureEventsFileHandle(handle) {
+    try {
+      const fileHandle = await handle.getFileHandle(EVENTS_FILENAME, { create: true });
+      const file = await fileHandle.getFile();
+
+      if (!file.size) {
+        await writeTextFile(fileHandle, "[]\n");
+      }
+
+      return fileHandle;
+    } catch (error) {
+      throw normalizeWorkspaceError(error, "No se pudo abrir el archivo events.json.");
+    }
+  }
+
+  async function writeTextFile(fileHandle, contents) {
+    try {
+      const writable = await fileHandle.createWritable();
+      await writable.write(contents);
+      await writable.close();
+    } catch (error) {
+      throw normalizeWorkspaceError(error, "No se pudo escribir el archivo events.json.");
+    }
+  }
+
+  function normalizeWorkspaceError(error, fallbackMessage) {
+    if (error?.requiresFolderAccess || error?.unsupported) {
+      return error;
+    }
+
+    if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
+      return createAppError(
+        "La web ya no tiene permiso para leer y escribir la carpeta seleccionada.",
+        { requiresFolderAccess: true, permissionDenied: true }
+      );
+    }
+
+    if (error?.name === "NotFoundError" || error?.name === "InvalidStateError") {
+      return createAppError(
+        "La carpeta configurada ya no esta disponible desde esta web.",
+        { requiresFolderAccess: true }
+      );
+    }
+
+    return createAppError(fallbackMessage || error?.message || "No se pudo acceder a la carpeta.");
+  }
+
+  async function setActiveDirectoryHandle(handle, options = {}) {
+    await ensureEventsFileHandle(handle);
+    directoryHandle = handle;
+
+    if (options.persist) {
+      await writeHandleToDb(handle);
+    }
+
+    return handle;
+  }
+
+  async function tryRestoreWorkspaceAccess() {
+    const storedHandle = await getStoredDirectoryHandle();
+    if (!storedHandle) {
+      directoryHandle = null;
+      return false;
+    }
+
+    const permission = await queryReadWritePermission(storedHandle);
+    if (permission !== "granted") {
+      directoryHandle = null;
+      return false;
+    }
+
+    await setActiveDirectoryHandle(storedHandle);
+    return true;
+  }
+
+  async function ensureWorkspaceAccess() {
+    if (!isFileSystemAccessSupported()) {
+      throw createAppError(
+        "Esta app necesita Chrome o Edge con File System Access API habilitada.",
+        { requiresFolderAccess: true, unsupported: true }
+      );
+    }
+
+    if (directoryHandle) {
+      const permission = await queryReadWritePermission(directoryHandle);
+      if (permission === "granted") {
+        return directoryHandle;
+      }
+
+      directoryHandle = null;
+    }
+
+    const restored = await tryRestoreWorkspaceAccess();
+    if (restored) {
+      return directoryHandle;
+    }
+
+    throw createAppError(
+      "Selecciona una carpeta para seguir usando la app.",
+      { requiresFolderAccess: true, permissionDenied: true }
+    );
+  }
+
+  async function pickDirectory() {
+    if (!isFileSystemAccessSupported()) {
+      throw createAppError(
+        "Esta app necesita Chrome o Edge con File System Access API habilitada.",
+        { requiresFolderAccess: true, unsupported: true }
+      );
+    }
+
+    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+    const permission = await handle.requestPermission({ mode: "readwrite" });
+
+    if (permission !== "granted") {
+      throw createAppError(
+        "Necesitas conceder permiso de lectura y escritura para usar esa carpeta.",
+        { requiresFolderAccess: true, permissionDenied: true }
+      );
+    }
+
+    await setActiveDirectoryHandle(handle, { persist: true });
+    return handle;
+  }
+
+  async function readEventsFile() {
+    const handle = await ensureWorkspaceAccess();
+    const fileHandle = await ensureEventsFileHandle(handle);
+
+    try {
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+      const rawEvents = text.trim() ? JSON.parse(text) : [];
+
+      if (!Array.isArray(rawEvents)) {
+        throw createAppError("El archivo events.json debe contener un array de eventos.");
+      }
+
+      return orderEventsBySortOrder(rawEvents.map((event, index) => ensurePersistedEventShape(event, index)));
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        throw createAppError("El archivo events.json no contiene JSON valido.");
+      }
+
+      throw normalizeWorkspaceError(error, error?.message || "No se pudo leer el archivo events.json.");
+    }
+  }
+
+  async function writeEventsFile(events) {
+    const handle = await ensureWorkspaceAccess();
+    const fileHandle = await ensureEventsFileHandle(handle);
+    const normalizedEvents = applySequentialSortOrder(events).map((event, index) => {
+      return ensurePersistedEventShape({
+        ...normalizeEvent(event),
+        sortOrder: index
+      });
+    });
+
+    await writeTextFile(fileHandle, `${JSON.stringify(normalizedEvents, null, 2)}\n`);
+    return normalizedEvents;
+  }
+
+  async function listEvents() {
+    return readEventsFile();
+  }
+
+  async function createEvent(payload) {
+    const currentEvents = await readEventsFile();
+    const createdEvent = ensurePersistedEventShape({
+      id: crypto.randomUUID(),
+      title: normalizeTitle(payload.title),
+      theme: payload.theme,
+      palette: "palette-01",
+      colors: {
+        background: normalizeHexColor(payload.colors?.background, DEFAULT_EVENT.colors.background),
+        progress: normalizeHexColor(payload.colors?.progress, DEFAULT_EVENT.colors.progress),
+        text: normalizeHexColor(payload.colors?.text, DEFAULT_EVENT.colors.text)
+      },
+      date: String(payload.date || ""),
+      createdAt: getNowISO(),
+      sortOrder: 0
+    });
+    const nextEvents = await writeEventsFile([createdEvent, ...currentEvents]);
+
+    return nextEvents.find((event) => event.id === createdEvent.id);
+  }
+
+  async function updateEvent(id, payload) {
+    const currentEvents = await readEventsFile();
+    const eventIndex = currentEvents.findIndex((event) => event.id === id);
+
+    if (eventIndex === -1) {
+      throw createAppError("Evento no encontrado.");
+    }
+
+    const previousEvent = currentEvents[eventIndex];
+    const nextEvent = ensurePersistedEventShape({
+      ...previousEvent,
+      ...payload,
+      title: payload.title !== undefined ? normalizeTitle(payload.title) : previousEvent.title,
+      colors: payload.colors
+        ? {
+            background: normalizeHexColor(payload.colors.background, previousEvent.colors.background),
+            progress: normalizeHexColor(payload.colors.progress, previousEvent.colors.progress),
+            text: normalizeHexColor(payload.colors.text, previousEvent.colors.text)
+          }
+        : previousEvent.colors,
+      sortOrder: payload.sortOrder ?? previousEvent.sortOrder
+    });
+    const nextEvents = [...currentEvents];
+    nextEvents[eventIndex] = nextEvent;
+    const persistedEvents = await writeEventsFile(nextEvents);
+
+    return persistedEvents.find((event) => event.id === id);
+  }
+
+  async function deleteEvent(id) {
+    const currentEvents = await readEventsFile();
+    const eventToDelete = currentEvents.find((event) => event.id === id);
+
+    if (!eventToDelete) {
+      throw createAppError("Evento no encontrado.");
+    }
+
+    await writeEventsFile(currentEvents.filter((event) => event.id !== id));
+    return eventToDelete;
+  }
+
+  async function persistEventOrder(events) {
+    return writeEventsFile(events);
+  }
+
+  async function forgetWorkspaceHandle() {
+    directoryHandle = null;
+    await clearHandleFromDb();
+  }
+
+  async function hasSavedHandle() {
+    return Boolean(await getStoredDirectoryHandle());
+  }
+
+  return {
+    createEvent,
+    deleteEvent,
+    ensureWorkspaceAccess,
+    forgetWorkspaceHandle,
+    hasSavedHandle,
+    listEvents,
+    persistEventOrder,
+    pickDirectory,
+    readEventsFile,
+    tryRestoreWorkspaceAccess,
+    updateEvent,
+    writeEventsFile
+  };
+})();
+
 function refreshAppStatus() {
+  if (state.needsFolderAccess) {
+    setAppStatus("");
+    return;
+  }
+
   if (state.loadError) {
     setAppStatus(`No se pudieron cargar los eventos: ${state.loadError}`);
     return;
@@ -359,25 +791,61 @@ function refreshAppStatus() {
   setAppStatus("");
 }
 
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      Accept: "application/json",
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...(options.headers || {})
-    }
-  });
-  const text = await response.text();
-  const payload = text ? JSON.parse(text) : null;
-
-  if (!response.ok) {
-    const error = new Error(payload?.error || "No se pudo completar la solicitud.");
-    error.statusCode = response.status;
-    throw error;
+function setFolderAccessState(nextState = {}) {
+  if (nextState.needsFolderAccess !== undefined) {
+    state.needsFolderAccess = nextState.needsFolderAccess;
   }
 
-  return payload;
+  if (nextState.isFolderModalOpen !== undefined) {
+    state.isFolderModalOpen = nextState.isFolderModalOpen;
+  } else {
+    state.isFolderModalOpen = state.needsFolderAccess;
+  }
+
+  if (nextState.folderStatus !== undefined) {
+    state.folderStatus = nextState.folderStatus;
+  }
+
+  if (nextState.folderError !== undefined) {
+    state.folderError = nextState.folderError;
+  }
+
+  if (nextState.browserUnsupported !== undefined) {
+    state.browserUnsupported = nextState.browserUnsupported;
+  }
+
+  if (nextState.hasStoredHandle !== undefined) {
+    state.hasStoredHandle = nextState.hasStoredHandle;
+  }
+
+  renderFolderAccessModal();
+}
+
+function renderFolderAccessModal() {
+  const open = state.isFolderModalOpen;
+  folderBackdrop.classList.toggle("is-open", open);
+  folderModal.classList.toggle("is-open", open);
+  folderModal.setAttribute("aria-hidden", String(!open));
+
+  const title = state.browserUnsupported
+    ? "Navegador no compatible"
+    : state.hasStoredHandle
+      ? "Recuperar acceso a la carpeta"
+      : "Elegi una carpeta local";
+  const message = state.browserUnsupported
+    ? "Abre esta web en Chrome o Edge para usar lectura y escritura directa sobre una carpeta local."
+    : state.folderStatus
+      ? state.folderStatus
+      : "La app guarda todo en un archivo events.json dentro de una carpeta local.";
+
+  folderModalTitle.textContent = title;
+  folderModalMessage.textContent = message;
+  folderModalError.hidden = !state.folderError;
+  folderModalError.textContent = state.folderError;
+  selectFolderButton.disabled = state.isPickingFolder || state.browserUnsupported;
+  selectFolderButton.textContent = state.isPickingFolder ? "Abriendo selector..." : "Seleccionar carpeta";
+  retryFolderAccessButton.disabled = state.isPickingFolder;
+  retryFolderAccessButton.hidden = state.browserUnsupported || !state.hasStoredHandle;
 }
 
 async function loadEvents() {
@@ -388,11 +856,22 @@ async function loadEvents() {
   renderApp();
 
   try {
-    const events = orderEventsBySortOrder((await requestJson("/api/events")).map(normalizeEvent));
+    const events = orderEventsBySortOrder((await localEventsStore.listEvents()).map(normalizeEvent));
     state.events = events;
     state.selectedEventId = events[0]?.id || null;
   } catch (error) {
+    if (isPermissionError(error)) {
+      await handleWorkspaceAccessLoss(error);
+      return;
+    }
+
     state.loadError = error.message;
+    setFolderAccessState({
+      needsFolderAccess: true,
+      folderStatus: "",
+      folderError: error.message,
+      hasStoredHandle: await localEventsStore.hasSavedHandle()
+    });
   } finally {
     state.isLoading = false;
     refreshAppStatus();
@@ -401,6 +880,10 @@ async function loadEvents() {
 }
 
 function createEventForDate(date) {
+  if (state.needsFolderAccess) {
+    return;
+  }
+
   state.editingEventId = null;
   state.deletingEventId = null;
   state.activeEditorTab = "theme";
@@ -527,9 +1010,14 @@ function renderEventStack() {
     return;
   }
 
+  if (state.needsFolderAccess) {
+    eventStack.innerHTML = `<p class="stack-empty">Selecciona una carpeta local para leer y guardar eventos.</p>`;
+    return;
+  }
+
   if (state.events.length === 0) {
     const message = state.loadError
-      ? "No hay datos cargados. Revisa la conexion a la API."
+      ? "No se pudieron leer los datos guardados. Revisa el modal de carpeta."
       : "No hay eventos guardados. Usa una fecha futura para crear el primero.";
     eventStack.innerHTML = `<p class="stack-empty">${escapeHtml(message)}</p>`;
     return;
@@ -582,10 +1070,16 @@ function renderEventStack() {
 
       void (async () => {
         try {
-          await persistEventOrder(reorderedEvents);
+          state.events = await localEventsStore.persistEventOrder(reorderedEvents);
         } catch (error) {
+          if (isPermissionError(error)) {
+            await handleWorkspaceAccessLoss(error);
+            return;
+          }
+
           state.events = previousEvents;
           state.saveNotice = `No se pudo guardar el orden: ${error.message}`;
+        } finally {
           refreshAppStatus();
           renderApp();
         }
@@ -617,7 +1111,8 @@ function renderHomeCalendar() {
     const iso = toISODate(new Date(year, month, day, 12));
     const delta = daysBetween(iso, todayISO);
     const isFuture = delta > 0;
-    const cell = document.createElement(isFuture ? "button" : "span");
+    const canCreate = isFuture && !state.needsFolderAccess;
+    const cell = document.createElement(canCreate ? "button" : "span");
     cell.className = "calendar-cell";
     cell.textContent = String(day);
 
@@ -625,6 +1120,9 @@ function renderHomeCalendar() {
     if (iso === selectedDate) cell.classList.add("is-selected");
     if (isFuture) {
       cell.classList.add("is-future");
+    }
+
+    if (canCreate) {
       cell.setAttribute("type", "button");
       cell.addEventListener("click", () => createEventForDate(iso));
     }
@@ -773,7 +1271,7 @@ function renderModalTabs() {
 function renderModalChrome() {
   editorStatusLabel.textContent = state.editingEventId ? "Editando evento" : "Nuevo evento";
   titleInput.value = state.draft.title;
-  saveEventButton.disabled = state.isSaving;
+  saveEventButton.disabled = state.isSaving || state.needsFolderAccess;
   saveEventButton.textContent = state.isSaving ? "Guardando..." : "Guardar";
   setEditorError(state.saveError);
   renderModalPreview();
@@ -818,12 +1316,28 @@ function removeEventFromState(eventId) {
 }
 
 function restoreDeletedEvent(event) {
-  state.events = sortEvents([normalizeEvent(event), ...state.events]);
+  state.events = orderEventsBySortOrder(applySequentialSortOrder([normalizeEvent(event), ...state.events]));
   state.selectedEventId = event.id;
   state.currentMonth = getMonthStart(toDateOnly(event.date));
 }
 
-function autoDeleteEvent(editingEvent) {
+async function handleWorkspaceAccessLoss(error) {
+  state.isSaving = false;
+  state.loadError = "";
+  state.saveError = "";
+  state.saveNotice = "";
+  setModal(false);
+  setFolderAccessState({
+    needsFolderAccess: true,
+    folderStatus: "",
+    folderError: error.message,
+    hasStoredHandle: await localEventsStore.hasSavedHandle()
+  });
+  refreshAppStatus();
+  renderApp();
+}
+
+async function autoDeleteEvent(editingEvent) {
   if (!editingEvent || state.deletingEventId === editingEvent.id) return;
 
   state.deletingEventId = editingEvent.id;
@@ -835,27 +1349,25 @@ function autoDeleteEvent(editingEvent) {
   refreshAppStatus();
   renderApp();
 
-  void (async () => {
-    try {
-      if (editingEvent.id.startsWith("temp-")) {
-        state.discardedTempEventIds.add(editingEvent.id);
-        return;
-      }
-
-      await requestJson(`/api/events/${encodeURIComponent(editingEvent.id)}`, { method: "DELETE" });
-    } catch (error) {
-      restoreDeletedEvent(editingEvent);
-      state.saveNotice = `No se pudo borrar el evento: ${error.message}`;
-    } finally {
-      state.deletingEventId = null;
-      refreshAppStatus();
-      renderApp();
+  try {
+    await localEventsStore.deleteEvent(editingEvent.id);
+  } catch (error) {
+    if (isPermissionError(error)) {
+      await handleWorkspaceAccessLoss(error);
+      return;
     }
-  })();
+
+    restoreDeletedEvent(editingEvent);
+    state.saveNotice = `No se pudo borrar el evento: ${error.message}`;
+  } finally {
+    state.deletingEventId = null;
+    refreshAppStatus();
+    renderApp();
+  }
 }
 
 async function saveDraft() {
-  if (state.isSaving) return;
+  if (state.isSaving || state.needsFolderAccess) return;
 
   const rawTitle = (state.draft.title || "").trim();
   const payload = {
@@ -869,102 +1381,53 @@ async function saveDraft() {
   const previousEvent = isEditing
     ? state.events.find((event) => event.id === editingEventId) || null
     : null;
-  const optimisticId = isEditing ? editingEventId : `temp-${crypto.randomUUID()}`;
-  const optimisticEvent = normalizeEvent({
-    ...(previousEvent || {}),
-    ...payload,
-    id: optimisticId,
-    createdAt: previousEvent?.createdAt || state.draft.createdAt || getNowISO(),
-    sortOrder: previousEvent?.sortOrder ?? 0
-  });
 
   state.isSaving = true;
   state.saveError = "";
   state.saveNotice = "";
+  renderModalChrome();
 
-  if (isEditing) {
-    state.events = sortEvents(
-      state.events.map((event) => (event.id === editingEventId ? optimisticEvent : event))
-    );
-    state.selectedEventId = editingEventId;
-  } else {
-    state.events = applySequentialSortOrder([optimisticEvent, ...state.events]);
-    state.selectedEventId = optimisticId;
-  }
+  try {
+    let persistedEvent;
 
-  state.editingEventId = null;
-  setModal(false);
-  refreshAppStatus();
-  renderApp();
-  state.isSaving = false;
-
-  void (async () => {
-    try {
-      let persistedEvent;
-
-      if (isEditing) {
-        persistedEvent = normalizeEvent(
-          ensurePersistedEventShape(
-            await requestJson(`/api/events/${encodeURIComponent(editingEventId)}`, {
-              method: "PUT",
-              body: JSON.stringify(payload)
-            })
-          )
-        );
-        state.events = sortEvents(
-          state.events.map((event) => (event.id === editingEventId ? persistedEvent : event))
-        );
-        state.selectedEventId = persistedEvent.id;
-      } else {
-        persistedEvent = normalizeEvent(
-          ensurePersistedEventShape(
-            await requestJson("/api/events", {
-              method: "POST",
-              body: JSON.stringify(payload)
-            })
-          )
-        );
-
-        if (state.discardedTempEventIds.has(optimisticId)) {
-          state.discardedTempEventIds.delete(optimisticId);
-          await requestJson(`/api/events/${encodeURIComponent(persistedEvent.id)}`, { method: "DELETE" });
-          persistedEvent = null;
-        } else {
-          state.events = orderEventsBySortOrder(
-            state.events.map((event) => (event.id === optimisticId ? persistedEvent : event))
-          );
-          if (state.selectedEventId === optimisticId) {
-            state.selectedEventId = persistedEvent.id;
-          }
-        }
-      }
-
-      if (persistedEvent) {
-        state.saveNotice = "";
-      }
-    } catch (error) {
-      if (isEditing) {
-        if (previousEvent) {
-          state.events = sortEvents(
-            state.events.map((event) => (event.id === editingEventId ? previousEvent : event))
-          );
-          state.selectedEventId = previousEvent.id;
-          state.currentMonth = getMonthStart(toDateOnly(previousEvent.date));
-        }
-      } else {
-        state.events = sortEvents(state.events.filter((event) => event.id !== optimisticId));
-        state.discardedTempEventIds.delete(optimisticId);
-        if (state.selectedEventId === optimisticId) {
-          state.selectedEventId = state.events[0]?.id || null;
-        }
-      }
-
-      state.saveNotice = `No se pudo guardar el evento: ${error.message}`;
-    } finally {
-      refreshAppStatus();
-      renderApp();
+    if (isEditing) {
+      persistedEvent = normalizeEvent(await localEventsStore.updateEvent(editingEventId, payload));
+      state.events = sortEvents(
+        state.events.map((event) => (event.id === editingEventId ? persistedEvent : event))
+      );
+      state.selectedEventId = persistedEvent.id;
+    } else {
+      persistedEvent = normalizeEvent(await localEventsStore.createEvent(payload));
+      state.events = orderEventsBySortOrder([persistedEvent, ...state.events]);
+      state.selectedEventId = persistedEvent.id;
     }
-  })();
+
+    state.editingEventId = null;
+    setModal(false);
+  } catch (error) {
+    if (isPermissionError(error)) {
+      await handleWorkspaceAccessLoss(error);
+      return;
+    }
+
+    if (isEditing && previousEvent) {
+      state.events = sortEvents(
+        state.events.map((event) => (event.id === editingEventId ? previousEvent : event))
+      );
+      state.selectedEventId = previousEvent.id;
+      state.currentMonth = getMonthStart(toDateOnly(previousEvent.date));
+    }
+
+    state.saveError = error.message;
+    setModal(true);
+  } finally {
+    state.isSaving = false;
+    refreshAppStatus();
+    renderApp();
+    if (state.isModalOpen) {
+      renderModalChrome();
+    }
+  }
 }
 
 function closeModalWithoutSaving() {
@@ -994,6 +1457,150 @@ function scheduleNextDayRefresh() {
   }, 60000);
 }
 
+async function retryStoredFolderAccess() {
+  if (state.isPickingFolder || state.browserUnsupported) return;
+
+  setFolderAccessState({
+    folderStatus: "Verificando carpeta guardada...",
+    folderError: ""
+  });
+
+  try {
+    const restored = await localEventsStore.tryRestoreWorkspaceAccess();
+
+    if (!restored) {
+      setFolderAccessState({
+        needsFolderAccess: true,
+        folderStatus: "",
+        folderError: "La web no tiene acceso vigente a la carpeta guardada.",
+        hasStoredHandle: await localEventsStore.hasSavedHandle()
+      });
+      return;
+    }
+
+    setFolderAccessState({
+      needsFolderAccess: false,
+      folderStatus: "",
+      folderError: "",
+      hasStoredHandle: true
+    });
+    await loadEvents();
+  } catch (error) {
+    setFolderAccessState({
+      needsFolderAccess: true,
+      folderStatus: "",
+      folderError: error.message,
+      hasStoredHandle: await localEventsStore.hasSavedHandle()
+    });
+    state.isLoading = false;
+    refreshAppStatus();
+    renderApp();
+  }
+}
+
+async function selectWorkspaceFolder() {
+  if (state.isPickingFolder || state.browserUnsupported) return;
+
+  state.isPickingFolder = true;
+  setFolderAccessState({
+    folderStatus: "Esperando seleccion de carpeta...",
+    folderError: ""
+  });
+
+  try {
+    await localEventsStore.pickDirectory();
+    setFolderAccessState({
+      needsFolderAccess: false,
+      folderStatus: "",
+      folderError: "",
+      hasStoredHandle: true
+    });
+    await loadEvents();
+  } catch (error) {
+    const folderError = isAbortError(error)
+      ? "No se selecciono ninguna carpeta."
+      : error.message;
+
+    setFolderAccessState({
+      needsFolderAccess: true,
+      folderStatus: "",
+      folderError,
+      hasStoredHandle: await localEventsStore.hasSavedHandle()
+    });
+  } finally {
+    state.isPickingFolder = false;
+    renderFolderAccessModal();
+  }
+}
+
+async function bootstrapWorkspace() {
+  state.isLoading = true;
+  state.loadError = "";
+  state.saveNotice = "";
+  state.browserUnsupported = !isFileSystemAccessSupported();
+  state.hasStoredHandle = await localEventsStore.hasSavedHandle();
+  refreshAppStatus();
+  renderApp();
+
+  if (state.browserUnsupported) {
+    state.isLoading = false;
+    setFolderAccessState({
+      needsFolderAccess: true,
+      browserUnsupported: true,
+      folderStatus: "",
+      folderError: "Esta app necesita Chrome o Edge para acceder a una carpeta local.",
+      hasStoredHandle: false
+    });
+    refreshAppStatus();
+    renderApp();
+    return;
+  }
+
+  setFolderAccessState({
+    needsFolderAccess: true,
+    browserUnsupported: false,
+    folderStatus: "Verificando carpeta...",
+    folderError: ""
+  });
+
+  try {
+    const restored = await localEventsStore.tryRestoreWorkspaceAccess();
+
+    if (!restored) {
+      state.isLoading = false;
+      setFolderAccessState({
+        needsFolderAccess: true,
+        folderStatus: "",
+        folderError: state.hasStoredHandle
+          ? "La web necesita que vuelvas a autorizar la carpeta guardada."
+          : "Selecciona una carpeta para guardar los eventos.",
+        hasStoredHandle: await localEventsStore.hasSavedHandle()
+      });
+      refreshAppStatus();
+      renderApp();
+      return;
+    }
+
+    setFolderAccessState({
+      needsFolderAccess: false,
+      folderStatus: "",
+      folderError: "",
+      hasStoredHandle: true
+    });
+    await loadEvents();
+  } catch (error) {
+    state.isLoading = false;
+    setFolderAccessState({
+      needsFolderAccess: true,
+      folderStatus: "",
+      folderError: error.message,
+      hasStoredHandle: await localEventsStore.hasSavedHandle()
+    });
+    refreshAppStatus();
+    renderApp();
+  }
+}
+
 function initializeEventHandlers() {
   homePrevMonthButton.addEventListener("click", () => shiftMonth(-1));
   homeNextMonthButton.addEventListener("click", () => shiftMonth(1));
@@ -1005,7 +1612,7 @@ function initializeEventHandlers() {
       : null;
 
     if (editingEvent && !state.draft.title.trim()) {
-      autoDeleteEvent(editingEvent);
+      void autoDeleteEvent(editingEvent);
       return;
     }
 
@@ -1020,6 +1627,12 @@ function initializeEventHandlers() {
     void saveDraft();
   });
   modalBackdrop.addEventListener("click", closeModalWithoutSaving);
+  selectFolderButton.addEventListener("click", () => {
+    void selectWorkspaceFolder();
+  });
+  retryFolderAccessButton.addEventListener("click", () => {
+    void retryStoredFolderAccess();
+  });
 
   [tabThemeButton, tabColorsButton].forEach((button) => {
     button.addEventListener("click", () => {
@@ -1048,7 +1661,7 @@ function initializeEventHandlers() {
       target.isContentEditable
     );
 
-    if (!state.isModalOpen && !isTypingTarget) {
+    if (!state.isModalOpen && !state.needsFolderAccess && !isTypingTarget) {
       if (event.key === "ArrowLeft") {
         event.preventDefault();
         shiftMonth(-1);
@@ -1059,6 +1672,10 @@ function initializeEventHandlers() {
         event.preventDefault();
         shiftMonth(1);
       }
+    }
+
+    if (state.needsFolderAccess) {
+      return;
     }
 
     if (!state.isModalOpen) return;
@@ -1084,7 +1701,8 @@ function initializeEventHandlers() {
 function initialize() {
   initializeEventHandlers();
   renderApp();
-  void loadEvents();
+  renderFolderAccessModal();
+  void bootstrapWorkspace();
   scheduleNextDayRefresh();
 }
 

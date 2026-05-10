@@ -26,6 +26,20 @@
     </section>
   </main>
 
+  <div class="folder-backdrop" id="folderBackdrop"></div>
+  <section class="folder-modal" id="folderModal" aria-hidden="true" aria-label="Acceso a carpeta local">
+    <div class="folder-surface">
+      <p class="folder-eyebrow">Carpeta local</p>
+      <h1 id="folderModalTitle">Elegi una carpeta local</h1>
+      <p class="folder-copy" id="folderModalMessage"></p>
+      <p class="folder-error" id="folderModalError" hidden></p>
+      <div class="folder-actions">
+        <button class="ghost-button" id="retryFolderAccess" type="button">Reintentar carpeta actual</button>
+        <button class="primary-button" id="selectFolderButton" type="button">Seleccionar carpeta</button>
+      </div>
+    </div>
+  </section>
+
   <div class="modal-backdrop" id="modalBackdrop"></div>
   <section class="editor-modal" id="editorModal" aria-hidden="true" aria-label="Editor de evento">
     <div class="editor-surface">
