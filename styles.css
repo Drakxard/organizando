@@ -514,6 +514,7 @@ button {
 #colorPane {
   width: min(760px, 100%);
   margin: 0 auto;
+  overflow: visible;
 }
 
 .color-panel-shell {
@@ -521,6 +522,7 @@ button {
   width: min(760px, 100%);
   min-height: 120px;
   padding-bottom: 0;
+  overflow: visible;
 }
 
 .color-summary-card {
@@ -598,8 +600,8 @@ button {
 
 .color-drawer {
   position: absolute;
-  top: calc(100% + 12px);
-  left: 0;
+  top: 50%;
+  right: calc(100% + 18px);
   width: min(430px, 100%);
   display: grid;
   gap: 14px;
@@ -608,7 +610,7 @@ button {
   background: #1f2025;
   box-shadow: 0 18px 34px rgba(15, 17, 22, 0.28);
   color: #f1f2f5;
-  transform: translateY(8px);
+  transform: translate(8px, -50%);
   opacity: 0;
   pointer-events: none;
   transition: transform 0.22s ease, opacity 0.22s ease;
@@ -616,7 +618,7 @@ button {
 }
 
 .color-drawer.is-open {
-  transform: translateY(0);
+  transform: translate(0, -50%);
   opacity: 1;
   pointer-events: auto;
 }
@@ -689,6 +691,10 @@ button {
     left: 0;
     width: auto;
     transform: translateY(108%);
+  }
+
+  .color-drawer.is-open {
+    transform: translateY(0);
   }
 }
 
