@@ -512,15 +512,16 @@ button {
 }
 
 #colorPane {
-  width: min(760px, 100%);
+  width: min(1120px, 100%);
   margin: 0 auto;
   overflow: visible;
 }
 
 .color-panel-shell {
   position: relative;
-  width: min(760px, 100%);
+  width: min(1120px, 100%);
   min-height: 120px;
+  padding-left: 448px;
   padding-bottom: 0;
   overflow: visible;
 }
@@ -530,6 +531,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 22px;
+  width: 100%;
   padding: 18px 20px;
   border-radius: 28px;
   background: #2c2d33;
@@ -601,8 +603,8 @@ button {
 .color-drawer {
   position: absolute;
   top: 50%;
-  right: calc(100% + 18px);
-  width: min(430px, 100%);
+  left: 0;
+  width: min(430px, calc(100% - 18px));
   display: grid;
   gap: 14px;
   padding: 16px 16px 18px;
@@ -610,7 +612,7 @@ button {
   background: #1f2025;
   box-shadow: 0 18px 34px rgba(15, 17, 22, 0.28);
   color: #f1f2f5;
-  transform: translate(8px, -50%);
+  transform: translate(-8px, -50%);
   opacity: 0;
   pointer-events: none;
   transition: transform 0.22s ease, opacity 0.22s ease;
@@ -977,15 +979,6 @@ button {
     width: 300px;
   }
 
-  #themePane {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: min(660px, 100%);
-  }
-
-  .color-summary-card {
-    gap: 16px;
-  }
-
   .editor-surface {
     grid-template-rows: auto minmax(240px, 280px) minmax(180px, 240px) auto;
   }
@@ -993,6 +986,50 @@ button {
   .theme-choice-preview {
     width: 180px;
     height: 114px;
+  }
+}
+
+@media (max-width: 1120px) {
+  #themePane {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    width: min(660px, 100%);
+  }
+
+  #colorPane,
+  .color-panel-shell {
+    width: min(760px, 100%);
+  }
+
+  .color-panel-shell {
+    min-height: 220px;
+    padding-left: 0;
+    padding-bottom: 272px;
+  }
+
+  .color-summary-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .color-summary-copy {
+    text-align: center;
+  }
+
+  .color-chip-row {
+    justify-content: center;
+  }
+
+  .color-drawer {
+    top: calc(100% + 12px);
+    left: 50%;
+    width: min(430px, 100%);
+    transform: translate(-50%, 8px);
+  }
+
+  .color-drawer.is-open {
+    transform: translate(-50%, 0);
   }
 }
 
@@ -1075,5 +1112,42 @@ button {
 
   .editor-toolbar {
     width: 100%;
+  }
+
+  #colorPane,
+  .color-panel-shell {
+    width: 100%;
+  }
+
+  .color-panel-shell {
+    min-height: 220px;
+    padding-left: 0;
+    padding-bottom: 148px;
+  }
+
+  .color-summary-card {
+    padding: 16px;
+  }
+
+  .color-chip {
+    min-width: 64px;
+  }
+
+  .color-chip-dot {
+    width: 48px;
+    height: 48px;
+  }
+
+  .color-drawer {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    transform: translateY(108%);
+  }
+
+  .color-drawer.is-open {
+    transform: translateY(0);
   }
 }
