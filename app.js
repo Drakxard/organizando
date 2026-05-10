@@ -81,7 +81,7 @@ const state = {
   browserUnsupported: false
 };
 
-const monthFormatter = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" });
+const monthFormatter = new Intl.DateTimeFormat("es-AR", { month: "long" });
 
 const appStatus = document.getElementById("appStatus");
 const eventStack = document.getElementById("eventStack");
