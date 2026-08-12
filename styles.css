@@ -199,6 +199,11 @@ button {
   position: relative;
 }
 
+.calendar-cell:hover,
+.calendar-cell:focus-visible {
+  z-index: 3;
+}
+
 .calendar-cell.has-events::after {
   position: absolute;
   inset: 5px;
@@ -428,8 +433,9 @@ button {
 
 .editor-surface {
   display: grid;
-  grid-template-rows: auto minmax(260px, 320px) minmax(170px, 220px) auto;
-  gap: 18px;
+  grid-template-columns: 220px minmax(520px, 720px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(420px, 1fr) auto;
+  gap: 18px 28px;
   height: 100%;
   padding: 24px 28px 28px;
   border-radius: 30px;
@@ -441,6 +447,7 @@ button {
 
 .editor-topbar {
   display: flex;
+  grid-column: 1 / -1;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -490,9 +497,11 @@ button {
 .modal-preview-area {
   position: relative;
   display: grid;
+  grid-column: 2;
+  grid-row: 2;
   justify-items: center;
   align-content: center;
-  min-height: 260px;
+  min-height: 360px;
 }
 
 .editor-error {
@@ -526,7 +535,7 @@ button {
   display: grid;
   place-items: center;
   width: 100%;
-  min-height: 260px;
+  min-height: 360px;
 }
 
 #modalPreview {
@@ -537,8 +546,10 @@ button {
 
 .editor-panel {
   display: grid;
+  grid-column: 1;
+  grid-row: 2;
   align-items: start;
-  min-height: 170px;
+  min-height: 360px;
 }
 
 .editor-pane {
@@ -549,14 +560,14 @@ button {
 
 .editor-pane.is-active {
   display: grid;
-  place-content: center;
+  place-content: start;
 }
 
 #themePane {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  width: min(780px, 100%);
-  margin: 0 auto;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  width: 100%;
+  margin: 0;
 }
 
 .theme-choice {
@@ -588,52 +599,37 @@ button {
 }
 
 #colorPane {
-  width: min(1120px, 100%);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   overflow: visible;
 }
 
 .color-panel-shell {
   position: relative;
   width: min(1120px, 100%);
-  min-height: 120px;
-  padding-left: 448px;
+  min-height: 360px;
+  padding-left: 0;
   padding-bottom: 0;
   overflow: visible;
 }
 
 .color-summary-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 22px;
-  width: 100%;
-  padding: 18px 20px;
-  border-radius: 28px;
-  background: #2c2d33;
-  box-shadow: 0 18px 28px rgba(20, 22, 28, 0.18);
-  color: #f1f2f5;
+  display: block;
+  width: auto;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
 }
 
-.color-summary-copy p {
-  margin: 0 0 6px;
-  color: rgba(255, 255, 255, 0.66);
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.color-summary-copy strong {
-  font-size: 1.18rem;
-  letter-spacing: -0.02em;
+.color-summary-copy {
+  display: none;
 }
 
 .color-chip-row {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: grid;
+  justify-content: start;
+  gap: 16px;
 }
 
 .color-chip {
@@ -687,7 +683,7 @@ button {
   border-radius: 24px;
   background: #1f2025;
   box-shadow: 0 18px 34px rgba(15, 17, 22, 0.28);
-  color: #f1f2f5;
+  color: var(--ink);
   transform: translate(-8px, -50%);
   opacity: 0;
   pointer-events: none;
@@ -781,6 +777,8 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   width: min(320px, 100%);
+  grid-column: 2;
+  grid-row: 3;
   margin: 0 auto;
   padding: 10px;
   border-radius: 24px;
@@ -1145,9 +1143,29 @@ button {
   }
 
   .editor-surface {
+    grid-template-columns: 1fr;
     padding: 16px 14px 18px;
     gap: 16px;
     grid-template-rows: auto minmax(210px, 240px) minmax(180px, 240px) auto;
+  }
+
+  .editor-topbar,
+  .modal-preview-area,
+  .editor-panel,
+  .editor-toolbar {
+    grid-column: 1;
+  }
+
+  .modal-preview-area {
+    grid-row: 2;
+  }
+
+  .editor-panel {
+    grid-row: 3;
+  }
+
+  .editor-toolbar {
+    grid-row: 4;
   }
 
   .editor-topbar {
