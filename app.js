@@ -2,6 +2,7 @@ const themeOrder = ["tealSlider", "tealBars", "pixelBlack"];
 const allowedThemes = new Set(themeOrder);
 const hexColorPattern = /^#(?:[0-9a-fA-F]{6})$/;
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+const LONG_PRESS_DURATION = 650;
 
 const themes = {
   tealSlider: {
@@ -898,6 +899,21 @@ function createEventForDate(date) {
   setModal(true);
 }
 
+function openEventForEditing(event) {
+  if (!event) return;
+
+  state.selectedEventId = event.id;
+  state.editingEventId = event.id;
+  state.deletingEventId = null;
+  state.activeColorField = null;
+  state.saveError = "";
+  state.draft = normalizeEvent({ ...event, colors: { ...event.colors } });
+  state.activeEditorTab = "theme";
+  state.currentMonth = getMonthStart(toDateOnly(event.date));
+  renderApp();
+  setModal(true);
+}
+
 function focusTitleCapture() {
   requestAnimationFrame(() => {
     titleInput.focus();
@@ -1025,24 +1041,43 @@ function renderEventStack() {
 
   state.events.forEach((event) => {
     const button = document.createElement("button");
+    let longPressTimerId = null;
+    let longPressTriggered = false;
     button.type = "button";
     button.className = `stack-item${state.selectedEventId === event.id ? " is-selected" : ""}${state.draggedEventId === event.id ? " is-dragging" : ""}`;
     button.draggable = true;
     button.dataset.eventId = event.id;
     button.innerHTML = buildThemeCard(event, { variant: "stack" });
     button.addEventListener("click", () => {
-      state.selectedEventId = event.id;
-      state.editingEventId = event.id;
-      state.deletingEventId = null;
-      state.activeColorField = null;
-      state.saveError = "";
-      state.draft = normalizeEvent({ ...event, colors: { ...event.colors } });
-      state.activeEditorTab = "theme";
-      state.currentMonth = getMonthStart(toDateOnly(event.date));
-      renderApp();
-      setModal(true);
+      if (longPressTriggered) {
+        return;
+      }
+
+      openEventForEditing(event);
+    });
+    button.addEventListener("pointerdown", (pointerEvent) => {
+      if (pointerEvent.button !== 0 || state.isSaving || state.needsFolderAccess) return;
+
+      longPressTriggered = false;
+      longPressTimerId = window.setTimeout(() => {
+        longPressTimerId = null;
+        longPressTriggered = true;
+        void requestEventDeletion(event);
+      }, LONG_PRESS_DURATION);
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach((eventName) => {
+      button.addEventListener(eventName, () => {
+        if (longPressTimerId !== null) {
+          clearTimeout(longPressTimerId);
+          longPressTimerId = null;
+        }
+      });
     });
     button.addEventListener("dragstart", (dragEvent) => {
+      if (longPressTimerId !== null) {
+        clearTimeout(longPressTimerId);
+        longPressTimerId = null;
+      }
       state.draggedEventId = event.id;
       dragEvent.dataTransfer.effectAllowed = "move";
       dragEvent.dataTransfer.setData("text/plain", event.id);
@@ -1097,6 +1132,12 @@ function renderHomeCalendar() {
   const firstDay = new Date(year, month, 1).getDay();
   const totalDays = new Date(year, month + 1, 0).getDate();
   const todayISO = getCurrentTodayISO();
+  const eventsByDate = state.events.reduce((events, event) => {
+    const eventsForDate = events.get(event.date) || [];
+    eventsForDate.push(event);
+    events.set(event.date, eventsForDate);
+    return events;
+  }, new Map());
 
   homeCalendarTitle.textContent = formatMonthTitle(state.currentMonth);
   homeCalendarDays.innerHTML = "";
@@ -1112,7 +1153,9 @@ function renderHomeCalendar() {
     const delta = daysBetween(iso, todayISO);
     const isFuture = delta > 0;
     const canCreate = isFuture && !state.needsFolderAccess;
-    const cell = document.createElement(canCreate ? "button" : "span");
+    const eventsForDate = eventsByDate.get(iso) || [];
+    const eventCount = eventsForDate.length;
+    const cell = document.createElement(canCreate || eventCount > 0 ? "button" : "span");
     cell.className = "calendar-cell";
     cell.textContent = String(day);
 
@@ -1122,9 +1165,24 @@ function renderHomeCalendar() {
       cell.classList.add("is-future");
     }
 
-    if (canCreate) {
+    if (eventCount > 0) {
+      cell.classList.add("has-events");
+      cell.setAttribute("aria-label", `${day}: ${eventCount} evento${eventCount === 1 ? "" : "s"}`);
+    }
+    if (eventCount > 1) {
+      cell.classList.add("has-conflict");
+    }
+
+    if (canCreate || eventCount > 0) {
       cell.setAttribute("type", "button");
-      cell.addEventListener("click", () => createEventForDate(iso));
+      cell.addEventListener("click", () => {
+        if (eventCount > 0) {
+          openEventForEditing(eventsForDate[0]);
+          return;
+        }
+
+        createEventForDate(iso);
+      });
     }
 
     homeCalendarDays.appendChild(cell);
@@ -1337,27 +1395,36 @@ async function handleWorkspaceAccessLoss(error) {
   renderApp();
 }
 
-async function autoDeleteEvent(editingEvent) {
-  if (!editingEvent || state.deletingEventId === editingEvent.id) return;
+async function requestEventDeletion(event) {
+  if (!event || state.deletingEventId === event.id) return;
 
-  state.deletingEventId = editingEvent.id;
+  const confirmed = window.confirm(`¿Querés borrar el evento "${event.title}"?`);
+  if (!confirmed) return;
+
+  await deleteEvent(event);
+}
+
+async function deleteEvent(event) {
+  if (!event || state.deletingEventId === event.id) return;
+
+  state.deletingEventId = event.id;
   state.editingEventId = null;
   state.saveError = "";
   state.saveNotice = "";
-  removeEventFromState(editingEvent.id);
+  removeEventFromState(event.id);
   setModal(false);
   refreshAppStatus();
   renderApp();
 
   try {
-    await localEventsStore.deleteEvent(editingEvent.id);
+    await localEventsStore.deleteEvent(event.id);
   } catch (error) {
     if (isPermissionError(error)) {
       await handleWorkspaceAccessLoss(error);
       return;
     }
 
-    restoreDeletedEvent(editingEvent);
+    restoreDeletedEvent(event);
     state.saveNotice = `No se pudo borrar el evento: ${error.message}`;
   } finally {
     state.deletingEventId = null;
@@ -1607,15 +1674,6 @@ function initializeEventHandlers() {
 
   titleInput.addEventListener("input", () => {
     state.draft.title = titleInput.value;
-    const editingEvent = state.editingEventId
-      ? state.events.find((event) => event.id === state.editingEventId) || null
-      : null;
-
-    if (editingEvent && !state.draft.title.trim()) {
-      void autoDeleteEvent(editingEvent);
-      return;
-    }
-
     renderModalPreview();
     renderThemePane();
     renderColorPane();

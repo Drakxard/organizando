@@ -195,6 +195,30 @@ button {
   border-radius: 18px;
 }
 
+.calendar-cell {
+  position: relative;
+}
+
+.calendar-cell.has-events::after {
+  position: absolute;
+  inset: 5px;
+  border: 2px dotted currentColor;
+  border-radius: 14px;
+  content: "";
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.calendar-cell.has-conflict {
+  background: rgba(211, 47, 47, 0.12);
+  color: #c62828;
+}
+
+.calendar-cell.has-conflict::after {
+  border-color: #d32f2f;
+  opacity: 1;
+}
+
 .calendar-days.compact .calendar-cell {
   background: rgba(151, 32, 165, 0.04);
   color: #9720a5;
@@ -230,6 +254,18 @@ button {
   color: #fff;
 }
 
+.calendar-days.compact .calendar-cell.has-conflict,
+.calendar-days.compact .calendar-cell.has-conflict:hover {
+  background: rgba(211, 47, 47, 0.12);
+  color: #c62828;
+  box-shadow: inset 0 0 0 1px rgba(198, 40, 40, 0.22);
+}
+
+.calendar-days.compact .calendar-cell.is-selected.has-conflict {
+  background: #c62828;
+  color: #fff;
+}
+
 .calendar-days.large .calendar-cell {
   background: rgba(255, 255, 255, 0.82);
   color: var(--ink);
@@ -243,6 +279,11 @@ button {
 
 .calendar-cell.is-selected {
   background: #9720a5;
+  color: #fff;
+}
+
+.calendar-cell.is-selected.has-conflict {
+  background: #c62828;
   color: #fff;
 }
 
