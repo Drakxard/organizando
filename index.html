@@ -44,10 +44,6 @@
   <section class="editor-modal" id="editorModal" aria-hidden="true" aria-label="Editor de evento">
     <div class="editor-surface">
       <header class="editor-topbar">
-        <div class="editor-status">
-          <p>Editor</p>
-          <strong id="editorStatusLabel">Nuevo evento</strong>
-        </div>
         <div class="editor-actions">
           <button class="ghost-button" id="closeModal" type="button">Cancelar</button>
           <button class="primary-button" id="saveEvent" type="button">Guardar</button>
@@ -78,6 +74,18 @@
         <button class="toolbar-button" id="tabTheme" type="button" data-tab="theme">Tema</button>
         <button class="toolbar-button" id="tabColors" type="button" data-tab="colors">Colores</button>
       </nav>
+    </div>
+  </section>
+
+  <div class="palette-backdrop" id="paletteBackdrop"></div>
+  <section class="palette-modal" id="paletteModal" aria-hidden="true" aria-label="Guardar paleta">
+    <div class="palette-surface">
+      <h2 id="paletteModalTitle">Guardar colores</h2>
+      <input class="palette-name-input" id="paletteNameInput" type="text" maxlength="24" autocomplete="off" placeholder="Ej. Inglés">
+      <div class="folder-actions">
+        <button class="ghost-button" id="cancelPalette" type="button">Cancelar</button>
+        <button class="primary-button" id="confirmPalette" type="button">Guardar paleta</button>
+      </div>
     </div>
   </section>
 

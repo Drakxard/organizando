@@ -67,6 +67,9 @@ const state = {
   isModalOpen: false,
   activeEditorTab: "theme",
   activeColorField: null,
+  isPaletteModalOpen: false,
+  paletteModalMode: null,
+  paletteTargetIndex: null,
   draft: createDefaultEventData(),
   isLoading: true,
   isSaving: false,
@@ -103,7 +106,6 @@ const retryFolderAccessButton = document.getElementById("retryFolderAccess");
 
 const modalBackdrop = document.getElementById("modalBackdrop");
 const editorModal = document.getElementById("editorModal");
-const editorStatusLabel = document.getElementById("editorStatusLabel");
 const editorError = document.getElementById("editorError");
 const closeModalButton = document.getElementById("closeModal");
 const saveEventButton = document.getElementById("saveEvent");
@@ -113,6 +115,12 @@ const themePane = document.getElementById("themePane");
 const colorPane = document.getElementById("colorPane");
 const tabThemeButton = document.getElementById("tabTheme");
 const tabColorsButton = document.getElementById("tabColors");
+const paletteBackdrop = document.getElementById("paletteBackdrop");
+const paletteModal = document.getElementById("paletteModal");
+const paletteModalTitle = document.getElementById("paletteModalTitle");
+const paletteNameInput = document.getElementById("paletteNameInput");
+const cancelPaletteButton = document.getElementById("cancelPalette");
+const confirmPaletteButton = document.getElementById("confirmPalette");
 
 let nextDayRefreshTimeoutId = null;
 
@@ -152,6 +160,32 @@ function loadCustomPalettes() {
 
 function saveCustomPalettes() {
   window.localStorage.setItem(PALETTES_STORAGE_KEY, JSON.stringify(state.palettes));
+}
+
+function setPaletteModal(open, mode = null, targetIndex = null) {
+  state.isPaletteModalOpen = open;
+  state.paletteModalMode = open ? mode : null;
+  state.paletteTargetIndex = open ? targetIndex : null;
+  paletteBackdrop.classList.toggle("is-open", open);
+  paletteModal.classList.toggle("is-open", open);
+  paletteModal.setAttribute("aria-hidden", String(!open));
+
+  if (!open) return;
+
+  const isDeleting = mode === "delete";
+  const palette = isDeleting ? state.palettes[targetIndex] : null;
+  paletteModalTitle.textContent = isDeleting ? "¿Borrar paleta?" : "Guardar colores";
+  paletteModalTitle.textContent = isDeleting ? `¿Borrar “${palette?.name || ""}”?` : "Nombre de la paleta";
+  paletteNameInput.hidden = isDeleting;
+  confirmPaletteButton.textContent = isDeleting ? "Borrar paleta" : "Guardar paleta";
+  confirmPaletteButton.classList.toggle("danger-button", isDeleting);
+
+  if (isDeleting) {
+    paletteNameInput.value = "";
+  } else {
+    paletteNameInput.value = "";
+    requestAnimationFrame(() => paletteNameInput.focus());
+  }
 }
 
 function toISODate(date) {
@@ -1273,6 +1307,9 @@ function renderColorPane() {
               <span class="color-chip-label">${config.label}</span>
             </button>
           `).join("")}
+        </div>
+      </div>
+      <div class="palette-chip-column">
           ${state.palettes.map((palette, index) => `
             <button class="color-chip palette-chip" type="button" data-palette-index="${index}" aria-label="Aplicar paleta ${escapeHtml(palette.name)}">
               <span class="color-chip-dot palette-dot" style="--palette-background:${palette.colors.background};--palette-progress:${palette.colors.progress};--palette-text:${palette.colors.text};"></span>
@@ -1281,9 +1318,7 @@ function renderColorPane() {
           `).join("")}
           <button class="color-chip palette-chip palette-add" type="button" data-save-palette aria-label="Guardar la paleta actual">
             <span class="color-chip-dot">+</span>
-            <span class="color-chip-label">Paleta</span>
           </button>
-        </div>
       </div>
       <div class="color-drawer-scrim${activeField ? " is-open" : ""}" data-close-color-drawer></div>
       <section class="color-drawer${activeField ? " is-open" : ""}" aria-hidden="${String(!activeField)}">
@@ -1318,7 +1353,10 @@ function renderColorPane() {
   });
 
   colorPane.querySelectorAll("[data-palette-index]").forEach((button) => {
+    let longPressTimerId = null;
+    let longPressTriggered = false;
     button.addEventListener("click", () => {
+      if (longPressTriggered) return;
       const palette = state.palettes[Number(button.dataset.paletteIndex)];
       if (!palette) return;
 
@@ -1329,19 +1367,27 @@ function renderColorPane() {
       renderThemePane();
       focusTitleCapture();
     });
+    button.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      longPressTriggered = false;
+      longPressTimerId = window.setTimeout(() => {
+        longPressTimerId = null;
+        longPressTriggered = true;
+        setPaletteModal(true, "delete", Number(button.dataset.paletteIndex));
+      }, LONG_PRESS_DURATION);
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach((eventName) => {
+      button.addEventListener(eventName, () => {
+        if (longPressTimerId !== null) {
+          clearTimeout(longPressTimerId);
+          longPressTimerId = null;
+        }
+      });
+    });
   });
 
   colorPane.querySelector("[data-save-palette]")?.addEventListener("click", () => {
-    const name = window.prompt("Nombre de la paleta:");
-    const trimmedName = name?.trim();
-    if (!trimmedName) return;
-
-    state.palettes.push({
-      name: trimmedName.slice(0, 24),
-      colors: { ...state.draft.colors }
-    });
-    saveCustomPalettes();
-    renderColorPane();
+    setPaletteModal(true, "create");
   });
 
   colorPane.querySelectorAll("[data-close-color-drawer]").forEach((element) => {
@@ -1395,7 +1441,6 @@ function renderModalTabs() {
 }
 
 function renderModalChrome() {
-  editorStatusLabel.textContent = state.editingEventId ? "Editando evento" : "Nuevo evento";
   titleInput.value = state.draft.title;
   saveEventButton.disabled = state.isSaving || state.needsFolderAccess;
   saveEventButton.textContent = state.isSaving ? "Guardando..." : "Guardar";
@@ -1751,6 +1796,28 @@ function initializeEventHandlers() {
   });
   retryFolderAccessButton.addEventListener("click", () => {
     void retryStoredFolderAccess();
+  });
+  cancelPaletteButton.addEventListener("click", () => setPaletteModal(false));
+  paletteBackdrop.addEventListener("click", () => setPaletteModal(false));
+  confirmPaletteButton.addEventListener("click", () => {
+    if (state.paletteModalMode === "delete") {
+      state.palettes.splice(state.paletteTargetIndex, 1);
+      saveCustomPalettes();
+      setPaletteModal(false);
+      renderColorPane();
+      return;
+    }
+
+    const name = paletteNameInput.value.trim();
+    if (!name) {
+      paletteNameInput.focus();
+      return;
+    }
+
+    state.palettes.push({ name, colors: { ...state.draft.colors } });
+    saveCustomPalettes();
+    setPaletteModal(false);
+    renderColorPane();
   });
 
   [tabThemeButton, tabColorsButton].forEach((button) => {

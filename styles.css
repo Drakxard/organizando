@@ -341,7 +341,9 @@ button {
 }
 
 .folder-modal,
-.folder-backdrop {
+.folder-backdrop,
+.palette-modal,
+.palette-backdrop {
   position: fixed;
   inset: 0;
   opacity: 0;
@@ -354,8 +356,15 @@ button {
   background: rgba(15, 18, 24, 0.48);
 }
 
+.palette-backdrop {
+  z-index: 30;
+  background: rgba(15, 18, 24, 0.5);
+}
+
 .folder-modal.is-open,
-.folder-backdrop.is-open {
+.folder-backdrop.is-open,
+.palette-modal.is-open,
+.palette-backdrop.is-open {
   opacity: 1;
   pointer-events: auto;
 }
@@ -365,6 +374,40 @@ button {
   display: grid;
   place-items: center;
   padding: 18px;
+}
+
+.palette-modal {
+  position: fixed;
+  z-index: 31;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.palette-surface {
+  width: min(440px, 100%);
+  padding: 28px;
+  border-radius: 28px;
+  background: #f5f3ee;
+  box-shadow: 0 26px 84px rgba(16, 18, 23, 0.24);
+}
+
+.palette-surface h2 {
+  margin: 0 0 10px;
+  color: var(--dark-ui);
+}
+
+.palette-name-input {
+  width: 100%;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 2px solid rgba(35, 37, 42, 0.16);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.danger-button {
+  background: #b42318;
 }
 
 .folder-surface {
@@ -545,7 +588,7 @@ button {
 }
 
 .editor-panel {
-  display: grid;
+  display: contents;
   grid-column: 1;
   grid-row: 2;
   align-items: start;
@@ -599,6 +642,8 @@ button {
 }
 
 #colorPane {
+  grid-column: 1 / -1;
+  grid-row: 2;
   width: 100%;
   margin: 0;
   overflow: visible;
@@ -606,7 +651,9 @@ button {
 
 .color-panel-shell {
   position: relative;
-  width: min(1120px, 100%);
+  display: grid;
+  grid-template-columns: 220px minmax(520px, 720px) minmax(120px, 1fr);
+  width: 100%;
   min-height: 360px;
   padding-left: 0;
   padding-bottom: 0;
@@ -614,6 +661,7 @@ button {
 }
 
 .color-summary-card {
+  grid-column: 1;
   display: block;
   width: auto;
   padding: 0;
@@ -692,6 +740,14 @@ button {
 .palette-chip {
   width: 100%;
   min-width: 0;
+}
+
+.palette-chip-column {
+  display: grid;
+  grid-column: 3;
+  align-content: start;
+  justify-items: center;
+  gap: 16px;
 }
 
 .palette-dot {
@@ -1184,6 +1240,26 @@ button {
 
   .editor-toolbar {
     grid-row: 4;
+  }
+
+  #colorPane {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .color-panel-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .color-summary-card,
+  .palette-chip-column {
+    grid-column: 1;
+  }
+
+  .palette-chip-column {
+    grid-auto-flow: column;
+    justify-content: center;
+    overflow-x: auto;
   }
 
   .editor-topbar {
