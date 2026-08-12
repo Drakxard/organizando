@@ -98,6 +98,20 @@
     </div>
   </section>
 
+  <div class="backup-backdrop" id="backupBackdrop"></div>
+  <section class="backup-modal" id="backupModal" aria-hidden="true" aria-label="Importar o exportar datos">
+    <div class="palette-surface">
+      <h2>Datos de la app</h2>
+      <p>Exportá o restaurá eventos, paletas y el orden configurado.</p>
+      <input id="importBackupInput" type="file" accept="application/json,.json" hidden>
+      <div class="backup-actions">
+        <button class="ghost-button" id="closeBackup" type="button">Cerrar</button>
+        <button class="ghost-button" id="importBackup" type="button">Importar</button>
+        <button class="primary-button" id="exportBackup" type="button">Exportar</button>
+      </div>
+    </div>
+  </section>
+
   <script src="app.js"></script>
 </body>
 </html>

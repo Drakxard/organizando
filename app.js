@@ -123,6 +123,12 @@ const paletteModalTitle = document.getElementById("paletteModalTitle");
 const paletteNameInput = document.getElementById("paletteNameInput");
 const cancelPaletteButton = document.getElementById("cancelPalette");
 const confirmPaletteButton = document.getElementById("confirmPalette");
+const backupBackdrop = document.getElementById("backupBackdrop");
+const backupModal = document.getElementById("backupModal");
+const closeBackupButton = document.getElementById("closeBackup");
+const importBackupButton = document.getElementById("importBackup");
+const exportBackupButton = document.getElementById("exportBackup");
+const importBackupInput = document.getElementById("importBackupInput");
 const sortTrigger = document.getElementById("sortTrigger");
 const sortMenu = document.getElementById("sortMenu");
 
@@ -206,6 +212,70 @@ function setPaletteModal(open, mode = null, targetIndex = null) {
   } else {
     paletteNameInput.value = "";
     requestAnimationFrame(() => paletteNameInput.focus());
+  }
+}
+
+function setBackupModal(open) {
+  backupBackdrop.classList.toggle("is-open", open);
+  backupModal.classList.toggle("is-open", open);
+  backupModal.setAttribute("aria-hidden", String(!open));
+}
+
+async function exportBackup() {
+  if (state.needsFolderAccess) return;
+
+  try {
+    const events = await localEventsStore.readEventsFile();
+    const backup = {
+      version: 1,
+      exportedAt: getNowISO(),
+      events,
+      palettes: state.palettes,
+      sortMode: state.sortMode
+    };
+    const blob = new Blob([`${JSON.stringify(backup, null, 2)}\n`], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `organizando-respaldo-${getCurrentTodayISO()}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setBackupModal(false);
+  } catch (error) {
+    state.saveNotice = `No se pudo exportar: ${error.message}`;
+    refreshAppStatus();
+  }
+}
+
+async function importBackup(file) {
+  if (!file || state.needsFolderAccess) return;
+
+  try {
+    const backup = JSON.parse(await file.text());
+    if (!backup || !Array.isArray(backup.events) || !Array.isArray(backup.palettes)) {
+      throw createAppError("El archivo no es un respaldo válido.");
+    }
+
+    const restoredEvents = backup.events.map((event, index) => ensurePersistedEventShape(event, index));
+    const restoredPalettes = backup.palettes.filter((palette) => (
+      palette && typeof palette.name === "string" &&
+      hexColorPattern.test(String(palette.colors?.background)) &&
+      hexColorPattern.test(String(palette.colors?.progress)) &&
+      hexColorPattern.test(String(palette.colors?.text))
+    ));
+    state.events = await localEventsStore.writeEventsFile(restoredEvents);
+    state.palettes = restoredPalettes;
+    state.sortMode = backup.sortMode === "remaining" ? "remaining" : "custom";
+    saveCustomPalettes();
+    window.localStorage.setItem(SORT_MODE_STORAGE_KEY, state.sortMode);
+    state.selectedEventId = state.events[0]?.id || null;
+    setBackupModal(false);
+    refreshAppStatus();
+    renderApp();
+  } catch (error) {
+    state.saveNotice = `No se pudo importar: ${error.message}`;
+    refreshAppStatus();
+  } finally {
+    importBackupInput.value = "";
   }
 }
 
@@ -1853,6 +1923,15 @@ function initializeEventHandlers() {
     setPaletteModal(false);
     renderColorPane();
   });
+  closeBackupButton.addEventListener("click", () => setBackupModal(false));
+  backupBackdrop.addEventListener("click", () => setBackupModal(false));
+  exportBackupButton.addEventListener("click", () => {
+    void exportBackup();
+  });
+  importBackupButton.addEventListener("click", () => importBackupInput.click());
+  importBackupInput.addEventListener("change", () => {
+    void importBackup(importBackupInput.files?.[0]);
+  });
 
   [tabThemeButton, tabColorsButton].forEach((button) => {
     button.addEventListener("click", () => {
@@ -1880,6 +1959,12 @@ function initializeEventHandlers() {
       target.tagName === "TEXTAREA" ||
       target.isContentEditable
     );
+
+    if (event.key === "|" && !isTypingTarget && !state.isModalOpen && !state.isFolderModalOpen) {
+      event.preventDefault();
+      setBackupModal(!backupModal.classList.contains("is-open"));
+      return;
+    }
 
     if (!state.isModalOpen && !state.needsFolderAccess && !isTypingTarget) {
       if (event.key === "ArrowLeft") {
