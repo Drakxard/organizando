@@ -60,11 +60,11 @@ button {
   position: relative;
   min-height: calc(100vh - 32px);
   overflow: hidden;
-  border: 8px solid var(--frame-line);
-  border-radius: 28px;
+  border: 0;
+  border-radius: 0;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(247, 246, 242, 0.9));
-  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.72);
+  box-shadow: none;
 }
 
 .event-stack {
