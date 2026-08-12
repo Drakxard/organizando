@@ -4,6 +4,7 @@ const hexColorPattern = /^#(?:[0-9a-fA-F]{6})$/;
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 const LONG_PRESS_DURATION = 650;
 const PALETTES_STORAGE_KEY = "organizando-custom-palettes";
+const SORT_MODE_STORAGE_KEY = "organizando-event-sort-mode";
 
 const themes = {
   tealSlider: {
@@ -62,6 +63,7 @@ const state = {
   currentMonth: getMonthStart(getToday()),
   events: [],
   palettes: [],
+  sortMode: "custom",
   selectedEventId: null,
   editingEventId: null,
   isModalOpen: false,
@@ -121,6 +123,8 @@ const paletteModalTitle = document.getElementById("paletteModalTitle");
 const paletteNameInput = document.getElementById("paletteNameInput");
 const cancelPaletteButton = document.getElementById("cancelPalette");
 const confirmPaletteButton = document.getElementById("confirmPalette");
+const sortTrigger = document.getElementById("sortTrigger");
+const sortMenu = document.getElementById("sortMenu");
 
 let nextDayRefreshTimeoutId = null;
 
@@ -160,6 +164,23 @@ function loadCustomPalettes() {
 
 function saveCustomPalettes() {
   window.localStorage.setItem(PALETTES_STORAGE_KEY, JSON.stringify(state.palettes));
+}
+
+function getDisplayedEvents() {
+  if (state.sortMode !== "remaining") return state.events;
+
+  return [...state.events].sort((left, right) => {
+    const dateDifference = getTargetEndOfDay(left.date).getTime() - getTargetEndOfDay(right.date).getTime();
+    return dateDifference || left.sortOrder - right.sortOrder;
+  });
+}
+
+function setSortMode(mode) {
+  state.sortMode = mode === "remaining" ? "remaining" : "custom";
+  window.localStorage.setItem(SORT_MODE_STORAGE_KEY, state.sortMode);
+  sortMenu.hidden = true;
+  sortTrigger.setAttribute("aria-expanded", "false");
+  renderEventStack();
 }
 
 function setPaletteModal(open, mode = null, targetIndex = null) {
@@ -1096,7 +1117,7 @@ function renderEventStack() {
     return;
   }
 
-  state.events.forEach((event) => {
+  getDisplayedEvents().forEach((event) => {
     const button = document.createElement("button");
     let longPressTimerId = null;
     let longPressTriggered = false;
@@ -1802,6 +1823,14 @@ function initializeEventHandlers() {
   retryFolderAccessButton.addEventListener("click", () => {
     void retryStoredFolderAccess();
   });
+  sortTrigger.addEventListener("click", () => {
+    const open = sortMenu.hidden;
+    sortMenu.hidden = !open;
+    sortTrigger.setAttribute("aria-expanded", String(open));
+  });
+  sortMenu.querySelectorAll("[data-sort-mode]").forEach((button) => {
+    button.addEventListener("click", () => setSortMode(button.dataset.sortMode));
+  });
   cancelPaletteButton.addEventListener("click", () => setPaletteModal(false));
   paletteBackdrop.addEventListener("click", () => setPaletteModal(false));
   confirmPaletteButton.addEventListener("click", () => {
@@ -1891,6 +1920,7 @@ function initializeEventHandlers() {
 
 function initialize() {
   state.palettes = loadCustomPalettes();
+  state.sortMode = window.localStorage.getItem(SORT_MODE_STORAGE_KEY) === "remaining" ? "remaining" : "custom";
   initializeEventHandlers();
   renderApp();
   renderFolderAccessModal();

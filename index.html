@@ -10,6 +10,15 @@
   <main class="home-shell">
     <div class="app-status" id="appStatus" hidden></div>
     <section class="workspace-frame" aria-label="Vista principal">
+      <div class="sort-control">
+        <button class="sort-trigger" id="sortTrigger" type="button" aria-label="Ordenar eventos" aria-expanded="false">
+          <span aria-hidden="true">⌄</span>
+        </button>
+        <div class="sort-menu" id="sortMenu" hidden>
+          <button type="button" data-sort-mode="custom">Orden personalizado</button>
+          <button type="button" data-sort-mode="remaining">Días restantes</button>
+        </div>
+      </div>
       <div class="event-stack" id="eventStack" aria-label="Eventos creados"></div>
 
       <aside class="calendar-dock" aria-label="Calendario principal">
