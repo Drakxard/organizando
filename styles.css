@@ -629,6 +629,7 @@ button {
 .color-chip-row {
   display: grid;
   justify-content: start;
+  justify-items: center;
   gap: 16px;
 }
 
@@ -637,7 +638,7 @@ button {
   justify-items: center;
   gap: 6px;
   min-width: 72px;
-  color: #f1f2f5;
+  color: var(--ink);
   cursor: pointer;
 }
 
@@ -661,38 +662,55 @@ button {
 }
 
 .color-drawer-scrim {
-  position: absolute;
-  inset: -10px;
-  opacity: 0;
+  display: none;
   pointer-events: none;
 }
 
 .color-drawer-scrim.is-open {
-  opacity: 1;
-  pointer-events: auto;
+  display: none;
 }
 
 .color-drawer {
-  position: absolute;
+  position: fixed;
   top: 50%;
-  left: 0;
-  width: min(430px, calc(100% - 18px));
+  left: 50%;
+  width: min(430px, calc(100vw - 36px));
   display: grid;
   gap: 14px;
   padding: 16px 16px 18px;
   border-radius: 24px;
   background: #1f2025;
   box-shadow: 0 18px 34px rgba(15, 17, 22, 0.28);
-  color: var(--ink);
-  transform: translate(-8px, -50%);
+  color: #f1f2f5;
+  transform: translate(-50%, calc(-50% + 8px));
   opacity: 0;
   pointer-events: none;
   transition: transform 0.22s ease, opacity 0.22s ease;
-  z-index: 3;
+  z-index: 30;
+}
+
+.palette-chip {
+  width: 100%;
+  min-width: 0;
+}
+
+.palette-dot {
+  background: linear-gradient(135deg, var(--palette-background) 0 48%, var(--palette-progress) 48% 74%, var(--palette-text) 74% 100%);
+}
+
+.palette-add .color-chip-dot {
+  display: grid;
+  place-items: center;
+  border-color: rgba(49, 73, 141, 0.36);
+  background: rgba(49, 73, 141, 0.1);
+  color: var(--dark-ui-strong);
+  font-size: 1.7rem;
+  font-weight: 400;
+  line-height: 1;
 }
 
 .color-drawer.is-open {
-  transform: translate(0, -50%);
+  transform: translate(-50%, -50%);
   opacity: 1;
   pointer-events: auto;
 }
@@ -1243,5 +1261,22 @@ button {
 
   .color-drawer.is-open {
     transform: translateY(0);
+  }
+}
+
+/* El selector se mantiene centrado sobre cualquier ancho de editor. */
+@media (max-width: 1120px) {
+  .color-drawer {
+    position: fixed;
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    width: min(430px, calc(100vw - 36px));
+    transform: translate(-50%, calc(-50% + 8px));
+  }
+
+  .color-drawer.is-open {
+    transform: translate(-50%, -50%);
   }
 }

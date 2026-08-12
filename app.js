@@ -3,6 +3,7 @@ const allowedThemes = new Set(themeOrder);
 const hexColorPattern = /^#(?:[0-9a-fA-F]{6})$/;
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 const LONG_PRESS_DURATION = 650;
+const PALETTES_STORAGE_KEY = "organizando-custom-palettes";
 
 const themes = {
   tealSlider: {
@@ -60,6 +61,7 @@ const state = {
   today: getToday(),
   currentMonth: getMonthStart(getToday()),
   events: [],
+  palettes: [],
   selectedEventId: null,
   editingEventId: null,
   isModalOpen: false,
@@ -129,6 +131,27 @@ function getNowISO() {
 
 function getCurrentTodayISO() {
   return toISODate(state.today);
+}
+
+function loadCustomPalettes() {
+  try {
+    const storedPalettes = JSON.parse(window.localStorage.getItem(PALETTES_STORAGE_KEY) || "[]");
+    return Array.isArray(storedPalettes)
+      ? storedPalettes.filter((palette) => (
+        palette &&
+        typeof palette.name === "string" &&
+        hexColorPattern.test(String(palette.colors?.background)) &&
+        hexColorPattern.test(String(palette.colors?.progress)) &&
+        hexColorPattern.test(String(palette.colors?.text))
+      ))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomPalettes() {
+  window.localStorage.setItem(PALETTES_STORAGE_KEY, JSON.stringify(state.palettes));
 }
 
 function toISODate(date) {
@@ -1250,6 +1273,16 @@ function renderColorPane() {
               <span class="color-chip-label">${config.label}</span>
             </button>
           `).join("")}
+          ${state.palettes.map((palette, index) => `
+            <button class="color-chip palette-chip" type="button" data-palette-index="${index}" aria-label="Aplicar paleta ${escapeHtml(palette.name)}">
+              <span class="color-chip-dot palette-dot" style="--palette-background:${palette.colors.background};--palette-progress:${palette.colors.progress};--palette-text:${palette.colors.text};"></span>
+              <span class="color-chip-label">${escapeHtml(palette.name)}</span>
+            </button>
+          `).join("")}
+          <button class="color-chip palette-chip palette-add" type="button" data-save-palette aria-label="Guardar la paleta actual">
+            <span class="color-chip-dot">+</span>
+            <span class="color-chip-label">Paleta</span>
+          </button>
         </div>
       </div>
       <div class="color-drawer-scrim${activeField ? " is-open" : ""}" data-close-color-drawer></div>
@@ -1282,6 +1315,33 @@ function renderColorPane() {
       renderColorPane();
       focusTitleCapture();
     });
+  });
+
+  colorPane.querySelectorAll("[data-palette-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const palette = state.palettes[Number(button.dataset.paletteIndex)];
+      if (!palette) return;
+
+      state.draft.colors = { ...palette.colors };
+      closeColorDrawer();
+      renderColorPane();
+      renderModalPreview();
+      renderThemePane();
+      focusTitleCapture();
+    });
+  });
+
+  colorPane.querySelector("[data-save-palette]")?.addEventListener("click", () => {
+    const name = window.prompt("Nombre de la paleta:");
+    const trimmedName = name?.trim();
+    if (!trimmedName) return;
+
+    state.palettes.push({
+      name: trimmedName.slice(0, 24),
+      colors: { ...state.draft.colors }
+    });
+    saveCustomPalettes();
+    renderColorPane();
   });
 
   colorPane.querySelectorAll("[data-close-color-drawer]").forEach((element) => {
@@ -1758,6 +1818,7 @@ function initializeEventHandlers() {
 }
 
 function initialize() {
+  state.palettes = loadCustomPalettes();
   initializeEventHandlers();
   renderApp();
   renderFolderAccessModal();
