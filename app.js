@@ -1175,7 +1175,6 @@ function renderHomeCalendar() {
         ? eventsForDate[0].title
         : `${eventsForDate[0].title} +${eventCount - 1}`;
       cell.dataset.eventPreview = eventPreview;
-      cell.setAttribute("title", eventPreview);
       cell.setAttribute("aria-label", `${day}: ${eventCount} evento${eventCount === 1 ? "" : "s"}`);
     }
     if (eventCount > 1) {

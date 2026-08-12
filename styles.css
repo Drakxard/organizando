@@ -59,7 +59,7 @@ button {
 .workspace-frame {
   position: relative;
   min-height: calc(100vh - 32px);
-  overflow: hidden;
+  overflow: visible;
   border: 0;
   border-radius: 0;
   background:
