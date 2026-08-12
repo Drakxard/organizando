@@ -1348,6 +1348,11 @@ function renderColorPane() {
     button.addEventListener("click", () => {
       state.activeColorField = button.dataset.colorField;
       renderColorPane();
+      const drawer = colorPane.querySelector(".color-drawer");
+      const shell = colorPane.querySelector(".color-panel-shell");
+      if (drawer && shell) {
+        drawer.style.setProperty("--drawer-top", `${button.offsetTop}px`);
+      }
       focusTitleCapture();
     });
   });

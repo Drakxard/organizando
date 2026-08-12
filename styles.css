@@ -477,7 +477,7 @@ button {
 .editor-surface {
   display: grid;
   grid-template-columns: 220px minmax(520px, 720px) minmax(0, 1fr);
-  grid-template-rows: auto minmax(420px, 1fr) auto;
+  grid-template-rows: minmax(420px, 1fr) auto auto;
   gap: 18px 28px;
   height: 100%;
   padding: 24px 28px 28px;
@@ -490,9 +490,10 @@ button {
 
 .editor-topbar {
   display: flex;
-  grid-column: 1 / -1;
+  grid-column: 2;
+  grid-row: 2;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 16px;
 }
 
@@ -541,7 +542,7 @@ button {
   position: relative;
   display: grid;
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1;
   justify-items: center;
   align-content: center;
   min-height: 360px;
@@ -643,7 +644,7 @@ button {
 
 #colorPane {
   grid-column: 1 / -1;
-  grid-row: 2;
+  grid-row: 1;
   width: 100%;
   margin: 0;
   overflow: visible;
@@ -662,6 +663,7 @@ button {
 
 .color-summary-card {
   grid-column: 1;
+  transform: translateX(-28px);
   display: block;
   width: auto;
   padding: 0;
@@ -719,10 +721,10 @@ button {
 }
 
 .color-drawer {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  width: min(430px, calc(100vw - 36px));
+  position: absolute;
+  top: var(--drawer-top, 0px);
+  left: 92px;
+  width: min(430px, calc(100% - 110px));
   display: grid;
   gap: 14px;
   padding: 16px 16px 18px;
@@ -730,7 +732,7 @@ button {
   background: #1f2025;
   box-shadow: 0 18px 34px rgba(15, 17, 22, 0.28);
   color: #f1f2f5;
-  transform: translate(-50%, calc(-50% + 8px));
+  transform: translate(8px, -10px);
   opacity: 0;
   pointer-events: none;
   transition: transform 0.22s ease, opacity 0.22s ease;
@@ -748,6 +750,7 @@ button {
   align-content: start;
   justify-items: center;
   gap: 16px;
+  transform: translateX(28px);
 }
 
 .palette-dot {
@@ -766,7 +769,7 @@ button {
 }
 
 .color-drawer.is-open {
-  transform: translate(-50%, -50%);
+  transform: translate(0, -10px);
   opacity: 1;
   pointer-events: auto;
 }
