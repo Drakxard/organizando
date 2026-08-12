@@ -111,10 +111,8 @@ const themePane = document.getElementById("themePane");
 const colorPane = document.getElementById("colorPane");
 const tabThemeButton = document.getElementById("tabTheme");
 const tabColorsButton = document.getElementById("tabColors");
-const workspaceFrame = document.querySelector(".workspace-frame");
 
 let nextDayRefreshTimeoutId = null;
-let isWheelNavigationLocked = false;
 
 function getToday() {
   const now = new Date();
@@ -916,19 +914,6 @@ function openEventForEditing(event) {
   setModal(true);
 }
 
-function navigateEvents(direction) {
-  if (state.events.length < 2) return;
-
-  const selectedIndex = state.events.findIndex((event) => event.id === state.selectedEventId);
-  const currentIndex = selectedIndex === -1 ? 0 : selectedIndex;
-  const nextIndex = (currentIndex + direction + state.events.length) % state.events.length;
-  const nextEvent = state.events[nextIndex];
-
-  state.selectedEventId = nextEvent.id;
-  state.currentMonth = getMonthStart(toDateOnly(nextEvent.date));
-  renderApp();
-}
-
 function focusTitleCapture() {
   requestAnimationFrame(() => {
     titleInput.focus();
@@ -1182,6 +1167,15 @@ function renderHomeCalendar() {
 
     if (eventCount > 0) {
       cell.classList.add("has-events");
+      cell.classList.add("has-event-preview");
+      if ((firstDay + day - 1) % 7 >= 4) {
+        cell.classList.add("preview-left");
+      }
+      const eventPreview = eventCount === 1
+        ? eventsForDate[0].title
+        : `${eventsForDate[0].title} +${eventCount - 1}`;
+      cell.dataset.eventPreview = eventPreview;
+      cell.setAttribute("title", eventPreview);
       cell.setAttribute("aria-label", `${day}: ${eventCount} evento${eventCount === 1 ? "" : "s"}`);
     }
     if (eventCount > 1) {
@@ -1699,22 +1693,6 @@ function initializeEventHandlers() {
   retryFolderAccessButton.addEventListener("click", () => {
     void retryStoredFolderAccess();
   });
-
-  workspaceFrame.addEventListener("wheel", (event) => {
-    if (state.isModalOpen || state.isFolderModalOpen || state.events.length < 2) return;
-
-    const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
-    if (delta === 0) return;
-
-    event.preventDefault();
-    if (isWheelNavigationLocked) return;
-
-    isWheelNavigationLocked = true;
-    navigateEvents(delta > 0 ? 1 : -1);
-    window.setTimeout(() => {
-      isWheelNavigationLocked = false;
-    }, 260);
-  }, { passive: false });
 
   [tabThemeButton, tabColorsButton].forEach((button) => {
     button.addEventListener("click", () => {

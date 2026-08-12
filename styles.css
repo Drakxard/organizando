@@ -209,6 +209,41 @@ button {
   pointer-events: none;
 }
 
+.calendar-cell.has-event-preview::before {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: calc(100% + 8px);
+  width: max-content;
+  max-width: 190px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--dark-ui);
+  color: #fff;
+  content: attr(data-event-preview);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.2;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(-4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  visibility: hidden;
+}
+
+.calendar-cell.has-event-preview.preview-left::before {
+  right: calc(100% + 8px);
+  left: auto;
+  transform: translateY(-50%) translateX(4px);
+}
+
+.calendar-cell.has-event-preview:hover::before,
+.calendar-cell.has-event-preview:focus-visible::before {
+  opacity: 1;
+  transform: translateY(-50%);
+  visibility: visible;
+}
+
 .calendar-cell.has-conflict {
   background: rgba(211, 47, 47, 0.12);
   color: #c62828;
